@@ -1,0 +1,120 @@
+
+AWSTemplateFormatVersion: '2010-09-09'
+
+Parameters:
+  TemplatesBucketUrl:
+    Type: String
+    Default: https://mi-bucket.s3.amazonaws.com
+
+  AmiId:
+    Type: AWS::EC2::Image::Id
+    Default: ami-xxxxxxxxxxxxxxxxx
+
+  RdsBPassword:
+    Type: String
+    
+Resources:
+
+# create VPC-A and B its networking resources and SG
+
+  VpcA:
+    Type: AWS::CloudFormation::Stack
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: Deploys VPC-A and its networking resources from the shared VPC template.
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      TemplateURL: !Sub '${TemplatesBucketUrl}/templates/vpc.yaml'
+      Parameters:
+        VpcName: VPC-A
+        CidrBlock: 10.10.0.0/16
+        privateSubnetCidr: 10.10.1.0/24
+
+  VpcB:
+    Type: AWS::CloudFormation::Stack
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: Deploys VPC-B and its networking resources from the shared VPC template.
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      TemplateURL: !Sub '${TemplatesBucketUrl}/templates/vpc.yaml'
+      Parameters:
+        VpcName: VPC-B
+        CidrBlock: 10.20.0.0/16
+        privateSubnetCidr: 10.20.1.0/24
+
+# create EC2 instances in VPC-A and B
+
+  Ec2A:
+    Type: AWS::CloudFormation::Stack
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: Deploys EC2 instance for VPC-A.
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      TemplateURL: !Sub '${TemplatesBucketUrl}/templates/ec2.yaml'
+      Parameters:
+        VpcId: !GetAtt VpcA.Outputs.VpcId
+        SubnetId: !GetAtt VpcA.Outputs.SubnetId
+        AmiId: !Ref AmiId
+        SecurityGroupId: !GetAtt VpcA.Outputs.SecurityGroupId
+      Tags:
+        - Key: Name
+          Value: EC2-A
+
+  Ec2B:
+    Type: AWS::CloudFormation::Stack
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: Deploys EC2 instance for VPC-B.
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      TemplateURL: !Sub '${TemplatesBucketUrl}/templates/ec2.yaml'
+      Parameters:
+        VpcId: !GetAtt VpcB.Outputs.VpcId
+        SubnetId: !GetAtt VpcB.Outputs.SubnetId
+        AmiId: !Ref AmiId
+        SecurityGroupId: !GetAtt VpcB.Outputs.SecurityGroupId
+      Tags:
+        - Key: Name
+          Value: EC2-B
+
+# Create a RDS instance in VPC-B
+
+  RdsB:
+    Type: AWS::RDS::DBInstance
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: Deploys RDS instance for VPC-B.
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      DBInstanceIdentifier: rds-b
+      AllocatedStorage: 20
+      DBInstanceClass: db.t3.micro
+      Engine: mysql
+      MasterUsername: admin
+      MasterUserPassword: !Ref RdsBPassword
+      VPCSecurityGroups:
+        - !GetAtt RdsBSecurityGroup.GroupId
+      
+  RdsBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow MySQL from EC2-B
+      VpcId: !GetAtt VpcB.Outputs.VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          SourceSecurityGroupId: !GetAtt VpcB.Outputs.SecurityGroupId
+      Tags:
+        - Key: Name
+          Value: RDS-B-SG
+
+          ## pasar el SG a una salida para que el stack y pueda usarlo en EC2 y RDS
+          ## cambiar el diagrama y quitar lambda y el endpoint de VPC-A ya que no se van a usar

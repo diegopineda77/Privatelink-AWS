@@ -1,0 +1,53 @@
+Parameters:
+
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+
+  AmiId:
+    Type: AWS::EC2::Image::Id
+
+  SecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+
+Resources:
+  MyEC2Role:
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: "allow EC2 to assume a workload identity; permissions deferred until service needs are defined"
+        must: []
+        mutable: review-required
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+
+  MyEC2InstanceProfile:
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: "provide the EC2 instance with the IAM role as a workload identity"
+        must: []
+        mutable: review-required
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref MyEC2Role
+
+  MyEC2:
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: "provide application compute; retain isolated network access with a dedicated security boundary"
+        must: []
+        mutable: review-required
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref AmiId
+      InstanceType: t3.micro
+      IamInstanceProfile: !Ref MyEC2InstanceProfile
+      SubnetId: !Ref SubnetId
+      SecurityGroupIds:
+        - !Ref SecurityGroupId
