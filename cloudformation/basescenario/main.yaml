@@ -1,0 +1,176 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: basescenario
+
+  TemplatesBucketUrl:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: /basescenario/TemplatesBucketUrl
+
+  # Use public parameters in Parameter Store
+  AmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+
+  RdsBPasswordParameterName:
+    Type: String
+    Default: RdsBPassword
+  RdsBPasswordParameterVersion:
+    Type: String
+    Default: '1'
+
+Resources:
+
+  # create VPC-A and B its networking resources and SG
+
+  VpcA:
+    Type: AWS::CloudFormation::Stack
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: Deploys VPC-A and its networking resources from the shared VPC template.
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      TemplateURL: !Sub ${TemplatesBucketUrl}/vpc.yaml
+      Parameters:
+        VpcName: VPC-A
+        CidrBlock: 10.10.0.0/16
+        PrivateSubnetCidr: 10.10.1.0/24
+        PrivateSubnet2Cidr: 10.10.2.0/24
+      Tags:
+        - Key: project
+          Value: !Ref ProjectName
+
+  VpcB:
+    Type: AWS::CloudFormation::Stack
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: Deploys VPC-B and its networking resources from the shared VPC template.
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      TemplateURL: !Sub ${TemplatesBucketUrl}/vpc.yaml
+      Parameters:
+        VpcName: VPC-B
+        CidrBlock: 10.20.0.0/16
+        PrivateSubnetCidr: 10.20.1.0/24
+        PrivateSubnet2Cidr: 10.20.2.0/24
+      Tags:
+        - Key: project
+          Value: !Ref ProjectName
+
+  # create EC2 instances in VPC-A and B and asociate them with their respective security groups
+
+  Ec2A:
+    Type: AWS::CloudFormation::Stack
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: Deploys EC2 instance for VPC-A.
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      TemplateURL: !Sub ${TemplatesBucketUrl}/ec2.yaml
+      Parameters:
+        SubnetId: !GetAtt VpcA.Outputs.SubnetId
+        AmiId: !Ref AmiId
+        SecurityGroupId: !GetAtt VpcA.Outputs.SecurityGroupId
+      Tags:
+        - Key: Name
+          Value: EC2-A
+        - Key: project
+          Value: !Ref ProjectName
+
+  Ec2B:
+    Type: AWS::CloudFormation::Stack
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: Deploys EC2 instance for VPC-B.
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      TemplateURL: !Sub ${TemplatesBucketUrl}/ec2.yaml
+      Parameters:
+        SubnetId: !GetAtt VpcB.Outputs.SubnetId
+        AmiId: !Ref AmiId
+        SecurityGroupId: !GetAtt VpcB.Outputs.SecurityGroupId
+      Tags:
+        - Key: Name
+          Value: EC2-B
+        - Key: project
+          Value: !Ref ProjectName
+
+  # Create a RDS instance in VPC-B and create a security group to allow access from EC2-B
+
+  RdsB:
+    Type: AWS::RDS::DBInstance
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: Deploys RDS instance for VPC-B.
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      PubliclyAccessible: false
+      DBInstanceIdentifier: rds-b
+      DBName: DBcustomers
+      AllocatedStorage: 20
+      DBInstanceClass: db.t3.micro
+      Engine: mysql
+      MasterUsername: admin
+      MasterUserPassword: !Sub '{{resolve:ssm-secure:${RdsBPasswordParameterName}:${RdsBPasswordParameterVersion}}}'
+      VPCSecurityGroups:
+        - !GetAtt RdsBSecurityGroup.GroupId
+      DBSubnetGroupName: !Ref RdsBSubnetGroup
+      Tags:
+        - Key: project
+          Value: !Ref ProjectName
+
+  RdsBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Private subnets for RDS in VPC-B
+      SubnetIds:
+        - !GetAtt VpcB.Outputs.SubnetId
+        - !GetAtt VpcB.Outputs.Subnet2Id
+      Tags:
+        - Key: project
+          Value: !Ref ProjectName
+
+  RdsBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow MySQL from EC2-B
+      VpcId: !GetAtt VpcB.Outputs.VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          SourceSecurityGroupId: !GetAtt VpcB.Outputs.SecurityGroupId
+      Tags:
+        - Key: Name
+          Value: VPC-B-RDS-SG
+        - Key: project
+          Value: !Ref ProjectName
+
+  # create S3 bucket for application data
+
+  AppBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+      Tags:
+        - Key: project
+          Value: !Ref ProjectName  

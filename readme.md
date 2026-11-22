@@ -23,16 +23,14 @@ If you are reviewing this project for the first time, the recommended order is:
     Shows how the files and documents are structured.
 
 1. **Business requirement**
-    Business use case explaining the situation
+    Business use case explaining the situation.
 
 1. **Architecture**
-   Review the diagrams and architecture visually.
+   Review the architecture proposal, goals and the diagrams.
 
-1. **CloudFormation**
-   Follow the instructions to reproduce the environments using AWS CloudFormation.
+1. **Infrastructure as a Code**
+   Follow the instructions to reproduce the environments using AWS CloudFormation o Terraform scripts.
 
-1. **Terraform**
-   Follow the instructions to reproduce the environments using terraform.
 
 
 ---
@@ -42,6 +40,11 @@ If you are reviewing this project for the first time, the recommended order is:
 ```text
 .
 ├── cloudformation/
+│   ├── basescenario/
+│   │    ├── ec2.yaml
+│   │    ├── main.yaml
+│   │    └── vpc.yaml
+│   ├── privatelink/
 │   └── README.md
 │
 ├── terraform/
@@ -51,6 +54,7 @@ If you are reviewing this project for the first time, the recommended order is:
 │   ├── providers.tf
 │   └── README.md
 │
+├── DBScripts.txt
 ├── tests.md
 ├── PrivateLink.drawio.png
 └── README.md
@@ -119,7 +123,7 @@ By implementing these approaches in the same project, the exercise highlights th
 ---
 
 
-# Goals of the Project
+## Goals of the Project
 
 The project aims to demonstrate practical knowledge of AWS networking, private connectivity, and cloud security.
 
@@ -155,3 +159,9 @@ The following goals were achieved:
 At the end of this project, the architecture demonstrates three distinct ways to establish private connectivity in AWS, providing a practical understanding of how to select the appropriate endpoint type based on application requirements.
 
 This exercise reinforces the ability to design secure, scalable, and isolated cloud architectures while minimizing unnecessary network exposure and operational complexity.
+
+---
+
+# Infrastructure as a Code
+
+Go to the CloudFormation or Terraform folder and follow the instructions to set up the scenario and create the infrastructure required to solve the case.
