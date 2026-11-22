@@ -1,9 +1,9 @@
-
 AWSTemplateFormatVersion: '2010-09-09'
 
 Parameters:
-
   PrivateSubnetCidr:
+    Type: String
+  PrivateSubnet2Cidr:
     Type: String
 
   VpcName:
@@ -14,12 +14,12 @@ Parameters:
 
 Resources:
 
-# create VPC and its networking resources
+  # create VPC and its networking resources
 
   MyVPC:
     Metadata:
       com.aws.cloudformation.Context:
-        why: "isolate PrivateLink workloads; DNS resolution enabled for service discovery"
+        why: isolate PrivateLink workloads; DNS resolution enabled for service discovery
         must: []
         mutable: review-required
     Type: AWS::EC2::VPC
@@ -29,24 +29,43 @@ Resources:
       EnableDnsHostnames: true
       Tags:
         - Key: Name
-          Value: !Ref VpcName
+          Value: !Ref VpcName  
 
-# create private subnet and route table
+  # create private subnet and route table
 
   PrivateSubnet:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref MyVPC
       CidrBlock: !Ref PrivateSubnetCidr
+      AvailabilityZone: !Select
+        - 0
+        - !GetAZs ''
       MapPublicIpOnLaunch: false
       Tags:
         - Key: Name
-          Value: !Sub '${VpcName}-private'
+          Value: !Sub ${VpcName}-private
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: !Ref PrivateSubnet2Cidr
+      AvailabilityZone: !Select
+        - 1
+        - !GetAZs ''
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${VpcName}-private
 
   PrivateRouteTable:
     Type: AWS::EC2::RouteTable
     Properties:
       VpcId: !Ref MyVPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${VpcName}-rt-private
 
   PrivateSubnetRouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
@@ -54,25 +73,38 @@ Resources:
       SubnetId: !Ref PrivateSubnet
       RouteTableId: !Ref PrivateRouteTable
 
-# create security group for EC2 instances
+  PrivateSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet2
+      RouteTableId: !Ref PrivateRouteTable
+
+  # create security group for EC2 instances
 
   MySecurityGroup:
     Metadata:
       com.aws.cloudformation.Context:
-        why: "restrict instance network access; inbound rules intentionally deferred"
+        why: restrict instance network access; inbound rules intentionally deferred
         must: []
         mutable: review-required
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: EC2 Security Group
       VpcId: !Ref MyVPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${VpcName}-EC2-SG'  
 
 Outputs:
   VpcId:
     Description: The ID of the VPC
     Value: !Ref MyVPC
   SubnetId:
+    Description: The ID of the first private subnet
     Value: !Ref PrivateSubnet
+  Subnet2Id:
+    Description: The ID of the second private subnet
+    Value: !Ref PrivateSubnet2
   SecurityGroupId:
     Description: The ID of the Security Group
     Value: !Ref MySecurityGroup
